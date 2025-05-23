@@ -230,6 +230,10 @@ class DeploymentService
 
             symlink($sharedPath, $releasePath);
         }
+
+        foreach (['bootstrap/cache', 'storage/framework/cache', 'storage/framework/views'] as $dir) {
+            FileSystem::ensureDirectoryExists("{$this->sharedPath}/{$dir}");
+        }
     }
 
     /**
@@ -248,6 +252,7 @@ class DeploymentService
             '--prefer-dist',
             '--optimize-autoloader',
             '--no-interaction',
+            '--no-scripts',
             '--working-dir=' . $this->newReleasePath,
         ];
 
@@ -350,6 +355,7 @@ class DeploymentService
         $this->runArtisanCommand('config:cache');
         $this->runArtisanCommand('route:cache');
         $this->runArtisanCommand('view:cache');
+        $this->runArtisanCommand('package:discover');
     }
 
     /**
