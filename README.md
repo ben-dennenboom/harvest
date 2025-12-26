@@ -64,6 +64,17 @@ return [
 ];
 ```
 
+## SSH Setup
+
+**Docker: Mount SSH keys**
+```yaml
+# docker-compose.yml
+services:
+  app:
+    volumes:
+      - ~/.ssh:/root/.ssh:ro
+```
+
 ## Usage
 
 Deploy to a specific environment:
