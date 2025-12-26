@@ -2,101 +2,104 @@
 
 namespace Dennenboom\Harvest\Commands;
 
-use Dennenboom\Harvest\Services\DeploymentService;
-use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputArgument;
-use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Input\InputOption;
-use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use Illuminate\Console\Command;
+use Symfony\Component\Process\Process;
 
 class DeployCommand extends Command
 {
-    /**
-     * The configuration data.
-     *
-     * @var array
-     */
-    protected $config;
+    protected $signature = 'harvest:deploy {environment : The deployment environment to use}
+                            {--no-confirm : Skip confirmation prompt}';
 
-    /**
-     * Create a new DeployCommand instance.
-     *
-     * @param array $config
-     */
-    public function __construct(array $config)
+    protected $description = 'Deploy your application to the specified environment';
+
+    public function handle(): int
     {
-        parent::__construct();
+        $environment = $this->argument('environment');
+        $deployments = config('harvest.deployments', []);
 
-        $this->config = $config;
+        if (!isset($deployments[$environment])) {
+            $this->error("Environment '{$environment}' not found in harvest configuration.");
+            $this->line('Available environments: ' . implode(', ', array_keys($deployments)));
+
+            return self::FAILURE;
+        }
+
+        $deployment = $deployments[$environment];
+
+        if (empty($deployment['ssh_command'])) {
+            $this->error("SSH command not configured for environment '{$environment}'.");
+
+            return self::FAILURE;
+        }
+
+        if (empty($deployment['actions'])) {
+            $this->error("No actions configured for environment '{$environment}'.");
+
+            return self::FAILURE;
+        }
+
+        $askConfirmation = $deployment['ask_confirmation'] ?? false;
+
+        if ($askConfirmation && !$this->option('no-confirm')) {
+            $this->info("You are about to deploy to: {$environment}");
+            $this->line("SSH Command: {$deployment['ssh_command']}");
+            $this->line("Actions to execute:");
+            foreach ($deployment['actions'] as $index => $action) {
+                $this->line("  " . ($index + 1) . ". {$action}");
+            }
+            $this->newLine();
+
+            if (!$this->confirm('Do you want to continue?', false)) {
+                $this->warn('Deployment cancelled.');
+
+                return self::FAILURE;
+            }
+        }
+
+        $this->info("Deploying to: {$environment}");
+        $this->newLine();
+
+        return $this->executeDeployment($deployment);
     }
 
-    /**
-     * Configure the command.
-     *
-     * @return void
-     */
-    protected function configure(): void
+    protected function executeDeployment(array $deployment): int
     {
-        $this
-            ->setName('deploy')
-            ->setDescription('Deploy a Laravel application')
-            ->addArgument('app', InputArgument::OPTIONAL, 'The application to deploy')
-            ->addOption('branch', 'b', InputOption::VALUE_REQUIRED, 'The branch to deploy')
-            ->addOption('no-tests', null, InputOption::VALUE_NONE, 'Skip running tests')
-            ->addOption('no-migrations', null, InputOption::VALUE_NONE, 'Skip running migrations')
-            ->addOption('force', 'f', InputOption::VALUE_NONE, 'Force deployment even if tests fail');
-    }
+        $sshCommand = $deployment['ssh_command'];
+        $actions = $deployment['actions'];
 
-    /**
-     * Execute the command.
-     *
-     * @param InputInterface $input
-     * @param OutputInterface $output
-     *
-     * @return int
-     */
-    protected function execute(InputInterface $input, OutputInterface $output): int
-    {
-        $io = new SymfonyStyle($input, $output);
-        $io->title('Harvest: Zero Downtime Laravel Deployment');
+        foreach ($actions as $index => $action) {
+            $this->line("[" . ($index + 1) . "/" . count($actions) . "] Executing: {$action}");
 
-        $appName = $input->getArgument('app') ?? $this->config['default_app'];
+            $fullCommand = sprintf('%s %s', $sshCommand, escapeshellarg($action));
 
-        if (!isset($this->config['applications'][$appName])) {
-            $io->error("Application '{$appName}' not found in configuration.");
+            $process = Process::fromShellCommandline($fullCommand);
+            $process->setTimeout(null); // No timeout
+            $process->setTty(Process::isTtySupported()); // Use TTY if supported for interactive commands
 
-            return Command::FAILURE;
+            try {
+                $process->run(function ($type, $buffer) {
+                    echo $buffer;
+                });
+
+                if (!$process->isSuccessful()) {
+                    $this->error("Command failed with exit code {$process->getExitCode()}");
+                    $this->error("Failed command: {$action}");
+
+                    return self::FAILURE;
+                }
+
+                $this->line("✓ Success");
+                $this->newLine();
+            } catch (\Exception $e) {
+                $this->error("Error executing command: {$e->getMessage()}");
+
+                return self::FAILURE;
+            }
         }
 
-        $appConfig = $this->config['applications'][$appName];
+        $this->newLine();
+        $this->info('✓ Deployment completed successfully!');
 
-        if ($input->getOption('branch')) {
-            $appConfig['branch'] = $input->getOption('branch');
-        }
-
-        $options = [
-            'skip_tests'      => $input->getOption('no-tests'),
-            'skip_migrations' => $input->getOption('no-migrations'),
-            'force'           => $input->getOption('force'),
-        ];
-
-        $io->section("Deploying application: {$appConfig['name']}");
-        $io->text("Repository: {$appConfig['repository']}");
-        $io->text("Branch: {$appConfig['branch']}");
-        $io->newLine();
-
-        try {
-            $deploymentService = new DeploymentService($appConfig, $this->config, $io);
-            $deploymentService->deploy($options);
-
-            $io->success("Application {$appConfig['name']} has been successfully deployed!");
-
-            return Command::SUCCESS;
-        } catch (\Exception $e) {
-            $io->error("Deployment failed: {$e->getMessage()}");
-
-            return Command::FAILURE;
-        }
+        return self::SUCCESS;
     }
 }

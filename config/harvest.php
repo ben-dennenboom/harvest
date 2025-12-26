@@ -3,85 +3,46 @@
 return [
     /*
     |--------------------------------------------------------------------------
-    | Application Configuration
+    | Deployment Environments
     |--------------------------------------------------------------------------
     |
-    | Configure your Laravel applications for deployment with Harvest.
+    | Define your deployment environments and the actions to perform.
+    | Each environment can have its own SSH connection and deployment steps.
+    |
+    | Supported Configuration Options:
+    |
+    | - ssh_command (string, required)
+    |   The SSH command used to connect to the server.
+    |   Example: 'ssh user@host -p2121' or 'ssh my-server-alias'
+    |
+    | - ask_confirmation (bool, optional, default: false)
+    |   Whether to prompt for confirmation before executing deployment actions.
+    |   Set to true for production environments.
+    |
+    | - actions (array, required)
+    |   List of shell commands to execute on the remote server.
+    |   Commands are executed sequentially. Deployment stops on first failure.
+    |
+    | Usage: php artisan harvest:deploy <environment>
+    |
+    | Example Configuration:
+    |
+    | 'production' => [
+    |     'ssh_command' => 'ssh deployer@prod.example.com',
+    |     'ask_confirmation' => true,
+    |     'actions' => [
+    |         'cd /var/www/my-app',
+    |         'git pull origin main',
+    |         'composer install --no-dev --optimize-autoloader',
+    |         'php artisan migrate --force',
+    |         'php artisan config:cache',
+    |         'php artisan queue:restart',
+    |     ],
+    | ],
     |
     */
 
-    'applications' => [
-        'default' => [
-            'name' => 'my-app',                             // Application name
-            'repository' => 'git@github.com:org/repo.git',  // Git repository URL
-            'branch' => 'main',                             // Default branch to deploy
-            'path' => '/var/www/my-app',                    // Deployment path
-            'releases_to_keep' => 5,                        // Number of releases to keep
-            'shared_dirs' => [                              // Directories to share between releases
-                'storage',
-                'storage/app',
-                'storage/framework',
-                'storage/logs',
-            ],
-            'shared_files' => [                             // Files to share between releases
-                '.env',
-            ],
-            'writable_dirs' => [                            // Directories that should be writable
-                'bootstrap/cache',
-                'storage',
-            ],
-            'hooks' => [                                    // Custom hooks to run during deployment
-                'before_deploy' => [
-                    // Commands to run before deployment
-                ],
-                'after_deploy' => [
-                    // Commands to run after deployment
-                ],
-            ],
-        ],
-
-        // You can define multiple applications
-        // 'another-app' => [
-        //     'name' => 'another-app',
-        //     'repository' => 'git@github.com:org/another-repo.git',
-        //     'branch' => 'develop',
-        //     'path' => '/var/www/another-app',
-        // ],
+    'deployments' => [
+        // Add your deployment environments here
     ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Default Application
-    |--------------------------------------------------------------------------
-    |
-    | The default application to deploy if none is specified.
-    |
-    */
-
-    'default_app' => 'default',
-
-    /*
-    |--------------------------------------------------------------------------
-    | Global Configuration
-    |--------------------------------------------------------------------------
-    |
-    | Global configuration options for Harvest.
-    |
-    */
-
-    'php_binary' => 'php',            // PHP binary path
-    'composer_binary' => 'composer',  // Composer binary path
-    'npm_binary' => 'npm',            // NPM binary path
-
-    /*
-    |--------------------------------------------------------------------------
-    | Deployment Settings
-    |--------------------------------------------------------------------------
-    |
-    | General deployment settings.
-    |
-    */
-
-    'run_tests' => true,              // Whether to run tests before deployment
-    'run_migrations' => true,         // Whether to run migrations during deployment
 ];

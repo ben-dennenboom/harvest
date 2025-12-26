@@ -1,294 +1,245 @@
 # Harvest
 
-Harvest is a robust deployment system for Laravel applications that ensures zero downtime, reliable rollbacks, and consistent deployment across multiple servers.
+A simple deployment automation tool for Laravel applications, inspired by Laravel Envoy. Harvest helps you automate deployment scenarios by executing a series of commands on remote servers via SSH.
 
-## Requirements
+## Features
 
-- PHP 8.1+
-- Git
-- Composer
-- npm (for applications with frontend assets)
-- Ubuntu server (recommended)
-- Laravel 10+ application
+- Simple deployment automation
+- SSH-based remote execution
+- Optional confirmation prompts
+- Easy configuration
+- Docker-friendly
 
 ## Installation
 
-### Global Installation (Recommended)
-
-Install Harvest globally on your deployment server(s):
+Install via Composer:
 
 ```bash
-composer global require dennenboom/harvest
+composer require dennenboom/harvest
 ```
 
-Ensure Composer's global bin directory is in your PATH:
+The package will auto-register itself via Laravel's package discovery.
+
+## Configuration
+
+Publish the configuration file:
 
 ```bash
-# Add this to your .bashrc or .zshrc
-export PATH="$PATH:$HOME/.composer/vendor/bin"
-
-# Reload your shell or run:
-source ~/.bashrc
+php artisan vendor:publish --tag=harvest-config
 ```
 
-Verify installation:
-
-```bash
-harvest --version
-```
-
-### Project-Specific Installation
-
-If you prefer to include Harvest as a project dependency:
-
-```bash
-composer require dennenboom/harvest --dev
-```
-
-Then use it with:
-
-```bash
-vendor/bin/harvest deploy
-```
-
-## Quick Start
-
-### 1. Initialize Configuration
-
-Create your configuration directory and copy the template:
-
-```bash
-# Create configuration directory
-mkdir -p ~/.harvest
-
-# Copy the template (adjust path based on your installation)
-cp ~/.composer/vendor/dennenboom/harvest/config/harvest.php ~/.harvest/config.php
-```
-
-### 2. Configure Your Applications
-
-Edit the configuration file:
-
-```bash
-nano ~/.harvest/config.php
-```
-
-Update the configuration with your application details:
+This will create a `config/harvest.php` file. Configure your deployment environments:
 
 ```php
-<?php
-
 return [
-    'applications' => [
-        'my-app' => [
-            'name' => 'my-app',
-            'repository' => 'git@github.com:your-org/your-repo.git',
-            'branch' => 'main',
-            'path' => '/var/www/my-app',
-            'releases_to_keep' => 5,
-            // ... other settings
+    'deployments' => [
+        'uat' => [
+            // The SSH command used to connect to the server
+            'ssh_command' => 'ssh user@host -p2121',
+
+            // Prompt for confirmation before executing actions
+            'ask_confirmation' => true,
+
+            // Actions to execute on the remote server
+            'actions' => [
+                'cd /var/www/my-app',
+                'git pull origin main',
+                'composer install --no-dev --optimize-autoloader',
+                'php artisan migrate --force',
+                'php artisan config:cache',
+            ],
+        ],
+
+        'production' => [
+            'ssh_command' => 'ssh user@production-host',
+            'ask_confirmation' => true,
+            'actions' => [
+                'cd /var/www/my-app',
+                'git pull origin main',
+                'composer install --no-dev --optimize-autoloader',
+                'php artisan migrate --force',
+            ],
         ],
     ],
-    
-    'default_app' => 'my-app',
-    
-    // Global settings...
 ];
-```
-
-### 3. Prepare Your Server
-
-Ensure your deployment directory exists and has proper permissions:
-
-```bash
-# Create deployment directory
-sudo mkdir -p /var/www/my-app
-sudo chown $USER:www-data /var/www/my-app
-sudo chmod 755 /var/www/my-app
-
-# Create shared directory for persistent files
-mkdir -p /var/www/my-app/shared/storage
-```
-
-### 4. Configure Your Web Server
-
-Point your web server to the `current/public` directory:
-
-**Nginx Example:**
-```nginx
-server {
-    listen 80;
-    server_name yourdomain.com;
-    root /var/www/my-app/current/public;
-    
-    index index.php;
-    
-    location / {
-        try_files $uri $uri/ /index.php?$query_string;
-    }
-    
-    location ~ \.php$ {
-        fastcgi_pass unix:/var/run/php/php8.1-fpm.sock;
-        fastcgi_index index.php;
-        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
-        include fastcgi_params;
-    }
-}
-```
-
-### 5. Set Up SSH Keys
-
-Ensure your server can access your Git repositories:
-
-```bash
-# Generate SSH key if you don't have one
-ssh-keygen -t ed25519 -C "your-email@example.com"
-
-# Add the public key to your Git provider (GitHub, GitLab, etc.)
-cat ~/.ssh/id_ed25519.pub
-
-# Test SSH access
-ssh -T git@github.com
-```
-
-### 6. Deploy Your Application
-
-```bash
-harvest deploy
 ```
 
 ## Usage
 
-### Deploying
-
-Deploy the default application:
-```bash
-harvest deploy
-```
-
-Deploy a specific application:
-```bash
-harvest deploy my-app
-```
-
-Deploy with options:
-```bash
-harvest deploy my-app --branch=develop --no-tests --force
-```
-
-**Available Options:**
-- `--branch=BRANCH` - Deploy a specific branch
-- `--no-tests` - Skip running tests
-- `--no-migrations` - Skip running migrations
-- `--force` - Force deployment even if tests fail
-
-### Listing Releases
+Deploy to a specific environment:
 
 ```bash
-harvest releases [app-name]
+php artisan harvest:deploy uat
 ```
 
-### Rolling Back
+Skip confirmation prompt:
 
-Rollback to the previous release:
 ```bash
-harvest rollback [app-name]
+php artisan harvest:deploy uat --no-confirm
 ```
 
-Rollback to a specific release:
-```bash
-harvest rollback my-app --release=20240508123456
+## SSH Authentication
+
+Harvest executes SSH commands directly, so authentication is handled by your SSH configuration. This means:
+
+- Your SSH keys should be set up and configured outside of Harvest
+- Use `ssh-agent` to manage your keys
+- Configure SSH aliases in your `~/.ssh/config` for easier management
+
+Example SSH config (`~/.ssh/config`):
+
+```
+Host uat-server
+    HostName uat.example.com
+    User deployer
+    Port 2121
+    IdentityFile ~/.ssh/deploy_key
 ```
 
-## One-Time Scripts
+Then in your Harvest config:
 
-Harvest supports executing scripts that should run only once during deployment:
-
-1. Create a `deploy-scripts` directory in your project root
-2. Add PHP scripts that you want to run during deployment
-3. Scripts are executed once and moved to `deploy-scripts/executed/`
-
-**Example script** (`deploy-scripts/update-permissions.php`):
 ```php
-<?php
-// This script will run once during deployment
-
-echo "Updating file permissions...\n";
-
-// Your one-time deployment code here
-exec('chmod -R 755 storage/');
-
-echo "Permissions updated successfully.\n";
-exit(0); // Return 0 for success
+'uat' => [
+    'ssh_command' => 'ssh uat-server',
+    // ...
+],
 ```
 
-## Directory Structure
+## Docker Considerations
 
-After deployment, your application directory will look like this:
+If your Laravel application runs inside Docker containers, you have several options for SSH key management:
 
-```
-/var/www/my-app/
-├── current -> /var/www/my-app/releases/20240508123456  (symlink)
-├── releases/
-│   ├── 20240508123456/  (latest release)
-│   ├── 20240507123456/  (previous release)
-│   ├── 20240506123456/
-│   ├── 20240505123456/
-│   └── 20240504123456/
-└── shared/
-    ├── .env
-    └── storage/
-        ├── app/
-        ├── framework/
-        └── logs/
+### Option 1: SSH Agent Forwarding (Recommended)
+
+Mount your SSH agent socket into the container:
+
+```yaml
+# docker-compose.yml
+services:
+  app:
+    volumes:
+      - $SSH_AUTH_SOCK:/ssh-agent
+    environment:
+      - SSH_AUTH_SOCK=/ssh-agent
 ```
 
-## Troubleshooting
-
-### Permission Issues
+Then run:
 
 ```bash
-# Fix ownership
-sudo chown -R www-data:www-data /var/www/my-app
-
-# Fix storage permissions
-sudo chmod -R 775 /var/www/my-app/shared/storage
+docker-compose exec app php artisan harvest:deploy uat
 ```
 
-### Git Authentication
+### Option 2: Mount SSH Keys as Volume
 
-```bash
-# Test SSH access to your Git provider
-ssh -T git@github.com
+Mount your SSH directory (ensure proper permissions):
 
-# If using HTTPS, cache credentials
-git config --global credential.helper cache
+```yaml
+# docker-compose.yml
+services:
+  app:
+    volumes:
+      - ~/.ssh:/root/.ssh:ro
 ```
 
-### Config File Not Found
+**Warning**: Be careful with this approach and never commit SSH keys to your repository.
 
-If you get a "config file not found" error:
+### Option 3: Run Harvest Outside Docker
+
+Since Harvest only orchestrates SSH commands, you can run it from your host machine:
 
 ```bash
-# Check if config exists
-ls -la ~/.harvest/config.php
-
-# Copy template if missing
-cp ~/.composer/vendor/dennenboom/harvest/config/harvest.php ~/.harvest/config.php
+# On your host machine
+php artisan harvest:deploy uat
 ```
 
-### Failed Deployment Cleanup
+### Option 4: Use Environment Variables for SSH Config
 
-If a deployment fails, Harvest automatically cleans up. However, you can manually clean up if needed:
+You can set SSH connection details via environment variables:
 
 ```bash
-# Remove a failed release
-rm -rf /var/www/my-app/releases/20240508123456
+# .env (DO NOT COMMIT)
+HARVEST_UAT_SSH=ssh user@host -p2121
+```
 
-# Check current symlink
-ls -la /var/www/my-app/current
+Then in your config:
+
+```php
+'uat' => [
+    'ssh_command' => env('HARVEST_UAT_SSH', 'ssh user@host'),
+    // ...
+],
+```
+
+## How It Works
+
+1. Harvest reads your deployment configuration from `config/harvest.php`
+2. It connects to the remote server using the configured SSH command
+3. Each action is executed sequentially on the remote server
+4. If any action fails, deployment stops immediately
+5. Success/failure status is reported back to you
+
+## Configuration Options
+
+### Per-Environment Settings
+
+- `ssh_command` (required): The SSH command to connect to the server
+- `ask_confirmation` (optional, default: `false`): Whether to prompt for confirmation before deployment
+- `actions` (required): Array of commands to execute on the remote server
+
+## Examples
+
+### Simple Deployment
+
+```php
+'dev' => [
+    'ssh_command' => 'ssh deployer@dev.example.com',
+    'ask_confirmation' => false,
+    'actions' => [
+        'cd /var/www/app',
+        'git pull',
+        'composer install',
+    ],
+],
+```
+
+### Production with Confirmation
+
+```php
+'production' => [
+    'ssh_command' => 'ssh deployer@prod.example.com',
+    'ask_confirmation' => true,
+    'actions' => [
+        'cd /var/www/app',
+        'git pull origin main',
+        'composer install --no-dev --optimize-autoloader',
+        'php artisan down',
+        'php artisan migrate --force',
+        'php artisan config:cache',
+        'php artisan route:cache',
+        'php artisan view:cache',
+        'php artisan queue:restart',
+        'php artisan up',
+    ],
+],
+```
+
+### Multiple Servers
+
+```php
+'staging' => [
+    'ssh_command' => 'ssh deployer@staging.example.com',
+    'actions' => ['cd /var/www/app', 'git pull'],
+],
+'production-web' => [
+    'ssh_command' => 'ssh deployer@web1.example.com',
+    'actions' => ['cd /var/www/app', 'git pull'],
+],
+'production-worker' => [
+    'ssh_command' => 'ssh deployer@worker1.example.com',
+    'actions' => ['cd /var/www/app', 'git pull', 'supervisorctl restart all'],
+],
 ```
 
 ## License
 
-The MIT License (MIT). Please see [License File](LICENSE) for more information.
+MIT License. See [LICENSE](LICENSE) for details.

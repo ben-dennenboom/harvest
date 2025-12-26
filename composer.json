@@ -1,6 +1,6 @@
 {
     "name": "dennenboom/harvest",
-    "description": "Zero downtime deployment tool for Laravel applications",
+    "description": "Simple deployment automation tool for Laravel applications",
     "type": "library",
     "license": "MIT",
     "authors": [
@@ -13,7 +13,8 @@
     "prefer-stable": true,
     "require": {
         "php": "^8.1",
-        "symfony/console": "^6.0|^7.0",
+        "illuminate/console": "^9.0|^10.0|^11.0",
+        "illuminate/support": "^9.0|^10.0|^11.0",
         "symfony/process": "^6.0|^7.0"
     },
     "autoload": {
@@ -21,7 +22,11 @@
             "Dennenboom\\Harvest\\": "src/"
         }
     },
-    "bin": [
-        "bin/harvest"
-    ]
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Dennenboom\\Harvest\\HarvestServiceProvider"
+            ]
+        }
+    }
 }
