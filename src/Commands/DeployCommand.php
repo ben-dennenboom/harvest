@@ -59,7 +59,28 @@ class DeployCommand extends Command
         $this->info("Deploying to: {$environment}");
         $this->newLine();
 
+        $this->displayConnectionInfo($deployment['ssh_command']);
+
         return $this->executeDeployment($deployment);
+    }
+
+    protected function displayConnectionInfo(string $sshCommand): void
+    {
+        $whoamiCommand = sprintf('%s %s', $sshCommand, escapeshellarg('whoami && hostname'));
+        $process = Process::fromShellCommandline($whoamiCommand);
+        $process->setTimeout(10);
+
+        try {
+            $process->run();
+            if ($process->isSuccessful()) {
+                $output = trim($process->getOutput());
+                [$user, $hostname] = explode("\n", $output, 2);
+                $this->line("Connected as: <info>{$user}@{$hostname}</info>");
+                $this->newLine();
+            }
+        } catch (\Exception $e) {
+            // Silently fail if we can't get connection info
+        }
     }
 
     protected function executeDeployment(array $deployment): int
@@ -68,38 +89,40 @@ class DeployCommand extends Command
         $actions = $deployment['actions'];
 
         foreach ($actions as $index => $action) {
-            $this->line("[" . ($index + 1) . "/" . count($actions) . "] Executing: {$action}");
+            $this->line("[" . ($index + 1) . "/" . count($actions) . "] {$action}");
+        }
+        $this->newLine();
 
-            $fullCommand = sprintf('%s %s', $sshCommand, escapeshellarg($action));
+        $chainedCommands = implode(' && ', $actions);
+        $fullCommand = sprintf('%s %s', $sshCommand, escapeshellarg($chainedCommands));
 
-            $process = Process::fromShellCommandline($fullCommand);
-            $process->setTimeout(null); // No timeout
-            $process->setTty(Process::isTtySupported()); // Use TTY if supported for interactive commands
+        $process = Process::fromShellCommandline($fullCommand);
+        $process->setTimeout(null);
+        $process->setTty(Process::isTtySupported());
 
-            try {
-                $process->run(function ($type, $buffer) {
-                    echo $buffer;
-                });
+        $this->line("Executing commands...");
+        $this->newLine();
 
-                if (!$process->isSuccessful()) {
-                    $this->error("Command failed with exit code {$process->getExitCode()}");
-                    $this->error("Failed command: {$action}");
+        try {
+            $process->run(function ($type, $buffer) {
+                echo $buffer;
+            });
 
-                    return self::FAILURE;
-                }
-
-                $this->line("✓ Success");
+            if (!$process->isSuccessful()) {
                 $this->newLine();
-            } catch (\Exception $e) {
-                $this->error("Error executing command: {$e->getMessage()}");
+                $this->error("Deployment failed with exit code {$process->getExitCode()}");
 
                 return self::FAILURE;
             }
+
+            $this->newLine();
+            $this->info('✓ Deployment completed successfully!');
+
+            return self::SUCCESS;
+        } catch (\Exception $e) {
+            $this->error("Error executing deployment: {$e->getMessage()}");
+
+            return self::FAILURE;
         }
-
-        $this->newLine();
-        $this->info('✓ Deployment completed successfully!');
-
-        return self::SUCCESS;
     }
 }
