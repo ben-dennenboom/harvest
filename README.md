@@ -7,6 +7,10 @@ A simple deployment automation tool for Laravel applications, inspired by Larave
 - Simple deployment automation
 - SSH-based remote execution
 - Optional confirmation prompts
+- Variable placeholders for dynamic deployments
+- Sudo password handling
+- Shell context switching support
+- SSH jump host (proxy) support
 - Easy configuration
 - Docker-friendly
 
@@ -87,6 +91,18 @@ Skip confirmation prompt:
 
 ```bash
 php artisan harvest:deploy uat --no-confirm
+```
+
+Pass variables via command line:
+
+```bash
+php artisan harvest:deploy production --var=version=v1.57.3
+```
+
+Pass multiple variables:
+
+```bash
+php artisan harvest:deploy production --var=version=v1.57.3 --var=branch=main
 ```
 
 ## SSH Authentication
@@ -189,6 +205,89 @@ Then in your config:
 4. If any action fails, deployment stops immediately
 5. Success/failure status is reported back to you
 
+## Advanced Features
+
+### Variable Placeholders
+
+Use dynamic variables in your deployment actions. Perfect for version tagging, branch selection, or any dynamic value.
+
+**Configuration:**
+
+```php
+'production' => [
+    'ssh_command' => 'ssh deployer@prod.example.com',
+    'ask_confirmation' => true,
+    'variables' => [
+        'version' => 'Enter version tag to deploy (e.g., v1.57.3)',
+        'branch' => [
+            'prompt' => 'Enter branch name',
+            'default' => 'main',
+        ],
+    ],
+    'actions' => [
+        'cd /var/www/app',
+        'git fetch --all --tags',
+        'git checkout {version}',
+        'composer install --no-dev --optimize-autoloader',
+    ],
+],
+```
+
+**Usage:**
+
+```bash
+# Will prompt for version
+php artisan harvest:deploy production
+
+# Pass version via command line
+php artisan harvest:deploy production --var=version=v1.57.3
+```
+
+### Sudo Password Handling
+
+Harvest automatically detects when your deployment requires sudo password and prompts you securely.
+
+**Auto-detection:** Harvest detects `sudo -S` or `sudo -s` commands automatically.
+
+**Manual configuration:** Set `needs_sudo_password` to `true` to force password prompt.
+
+```php
+'staging' => [
+    'ssh_command' => 'ssh user@staging.example.com',
+    'needs_sudo_password' => true,  // Force password prompt
+    'actions' => [
+        'sudo systemctl restart nginx',
+        'sudo supervisorctl restart all',
+    ],
+],
+```
+
+### Shell Context Switching
+
+Harvest intelligently handles shell switching commands like `sudo -u user -s /bin/bash`. When detected, all subsequent commands run in that user's context.
+
+**Example:**
+
+```php
+'staging' => [
+    'ssh_command' => 'ssh -J proxy@jump.example.com user@target.example.com',
+    'ask_confirmation' => true,
+    'actions' => [
+        'sudo -S -u apache -s /bin/bash',  // Switch to apache user
+        'cd /srv/www/app',                 // Runs as apache
+        'git pull origin dev',             // Runs as apache
+        'composer install',                // Runs as apache
+        'php artisan migrate --force',     // Runs as apache
+    ],
+],
+```
+
+When you run this deployment, Harvest will:
+1. Prompt for sudo password (auto-detected from `sudo -S`)
+2. Connect via SSH jump host (proxy)
+3. Switch to apache user
+4. Execute remaining commands in apache user context
+
 ## Configuration Options
 
 ### Per-Environment Settings
@@ -196,6 +295,8 @@ Then in your config:
 - `ssh_command` (required): The SSH command to connect to the server
 - `ask_confirmation` (optional, default: `false`): Whether to prompt for confirmation before deployment
 - `actions` (required): Array of commands to execute on the remote server
+- `variables` (optional): Define variables for use in actions with `{varname}` placeholders
+- `needs_sudo_password` (optional): Force sudo password prompt (auto-detected when using `sudo -S` or `sudo -s`)
 
 ## Examples
 

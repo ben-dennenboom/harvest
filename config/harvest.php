@@ -22,14 +22,38 @@ return [
     | - actions (array, required)
     |   List of shell commands to execute on the remote server.
     |   Commands are executed sequentially. Deployment stops on first failure.
+    |   Supports variable placeholders: Use {varname} in commands.
     |
-    | Usage: php artisan harvest:deploy <environment>
+    | - variables (array, optional)
+    |   Define variables that can be used in actions as placeholders.
+    |   Variables can be:
+    |     - Simple string prompts: 'version' => 'Enter version to deploy'
+    |     - Array with options: 'version' => ['prompt' => '...', 'default' => 'v1.0.0']
+    |   Variables can also be passed via command line: --var=version=v1.57.3
+    |
+    | - needs_sudo_password (bool, optional, default: auto-detect)
+    |   Set to true if deployment requires sudo password.
+    |   Auto-detected when actions contain 'sudo -S' or 'sudo -s'.
+    |   Password will be prompted securely (hidden input).
+    |
+    | Usage: php artisan harvest:deploy <environment> [options]
+    |
+    | Options:
+    |   --no-confirm    Skip confirmation prompt
+    |   --var=key=value Pass variables (can be used multiple times)
     |
     | Example Configuration:
     |
     | 'production' => [
     |     'ssh_command' => 'ssh deployer@prod.example.com',
     |     'ask_confirmation' => true,
+    |     'needs_sudo_password' => false,
+    |     'variables' => [
+    |         'version' => [
+    |             'prompt'  => 'Enter the version to deploy',
+    |             'default' => 'v1.0.0',
+    |         ],
+    |     ],
     |     'actions' => [
     |         'cd /var/www/my-app',
     |         'git pull origin main',
